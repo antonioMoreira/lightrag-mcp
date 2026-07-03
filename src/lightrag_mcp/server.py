@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import ValidationError
 from typing import Literal, Optional
 
@@ -14,7 +15,17 @@ client = LightRAGClient(
     timeout=settings.request_timeout
 )
 
-@mcp.tool()
+@mcp.tool(
+    title="Query Rust/gRPC/QUIC Text Knowledge Base",
+    description=(
+        "Query the specialized local knowledge base for detailed text explanations, code patterns, and "
+        "architectural guidelines regarding the Rust programming language, gRPC/Protobuf protocols, and QUIC/UDP networking. "
+        "CRITICAL: ONLY invoke this tool for Rust, gRPC, or QUIC queries. Do NOT use for general programming languages "
+        "(like Python, JS, C++) or general topics, as it will return irrelevant noise and pollute your reasoning."
+    ),
+    tags={"rust", "grpc", "quic", "rag"},
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True)
+)
 async def query_text(
     query: str,
     mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass"] = "mix",
@@ -29,7 +40,14 @@ async def query_text(
     include_references: bool = True,
     include_chunk_content: bool = False,
 ) -> str:
-    """Query standard text response from LightRAG.
+    """Query the specialized local knowledge base for detailed text explanations, code patterns, and 
+    architectural guidelines regarding the Rust programming language, gRPC/Protobuf protocols, and QUIC/UDP networking.
+
+    CRITICAL RULES:
+    1. ONLY invoke this tool when the query explicitly relates to Rust, gRPC, Protobuf, or QUIC.
+    2. Do NOT use this tool for other programming languages (like Python, JS, C++) or general topics, 
+       as it will return irrelevant context and pollute your reasoning.
+    3. This is the primary, default tool to use for standard text questions in these domains.
 
     Args:
         query: The prompt or question to ask the RAG system (minimum 3 characters).
@@ -80,7 +98,16 @@ async def query_text(
     except Exception as e:
         return f"LightRAG Query Error: {e}"
 
-@mcp.tool()
+@mcp.tool(
+    title="Query Rust/gRPC/QUIC Graph Data",
+    description=(
+        "Retrieve raw, structured knowledge graph data (JSON entities, relations, raw text chunks, and graph nodes) "
+        "from the specialized Rust, gRPC, and QUIC local knowledge base. Use this ONLY when you need to inspect raw "
+        "JSON connections, node definitions, or compile custom graph metrics. For standard text questions, use query_text."
+    ),
+    tags={"rust", "grpc", "quic", "graph", "raw-data"},
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True)
+)
 async def query_data(
     query: str,
     mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass"] = "mix",
@@ -93,7 +120,13 @@ async def query_data(
     max_relation_tokens: Optional[int] = None,
     max_total_tokens: Optional[int] = None,
 ) -> str:
-    """Query structured knowledge graph data (entities, relations, chunks, etc.) from LightRAG.
+    """Query structured knowledge graph data (entities, relations, chunks, etc.) from the specialized Rust, gRPC, and QUIC knowledge base.
+
+    CRITICAL RULES:
+    1. ONLY invoke this tool when the query explicitly relates to Rust, gRPC, Protobuf, or QUIC.
+    2. Do NOT use this tool for standard natural language questions (use query_text instead).
+    3. Use this tool ONLY when you need to inspect raw JSON graph entities, node definitions, 
+       entity-relation lists, or compile custom graph connectivity metrics.
 
     Args:
         query: The prompt or question to ask (minimum 3 characters).
@@ -129,7 +162,16 @@ async def query_data(
     except Exception as e:
         return f"LightRAG Query Error: {e}"
 
-@mcp.tool()
+@mcp.tool(
+    title="Query Rust/gRPC/QUIC Stream Fallback",
+    description=(
+        "Query the specialized local Rust, gRPC, and QUIC knowledge base using a streaming aggregation fallback. "
+        "Returns the fully aggregated text response. Prefer query_text as the primary tool; use this only if you specifically "
+        "want to consume a server-sent events (SSE) stream aggregation under the hood."
+    ),
+    tags={"rust", "grpc", "quic", "rag", "stream"},
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True)
+)
 async def query_stream(
     query: str,
     mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass"] = "mix",
@@ -142,10 +184,12 @@ async def query_stream(
     max_relation_tokens: Optional[int] = None,
     max_total_tokens: Optional[int] = None,
 ) -> str:
-    """Query streaming response chunks from LightRAG and return the aggregated response.
+    """Query the specialized local Rust, gRPC, and QUIC knowledge base using a streaming aggregation fallback.
 
-    This connects to the streaming endpoint, consumes all token chunks in real-time,
-    and returns the fully aggregated text response.
+    CRITICAL RULES:
+    1. ONLY invoke this tool when the query explicitly relates to Rust, gRPC, Protobuf, or QUIC.
+    2. Prefer using query_text as the primary tool. Use this tool only if you specifically want to stream 
+       or consume token-by-token server-sent events (SSE) under the hood for highly long, continuous, or high-throughput queries.
 
     Args:
         query: The prompt or question to ask (minimum 3 characters).
