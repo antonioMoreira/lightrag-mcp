@@ -58,7 +58,6 @@ uv run pytest
 
 ## Step 3: Rebuild the Docker Container
 
-Since your MCP client runs the server inside a Docker container (as configured in `mcp_config.json`), any modifications made to local `.py` files **will not take effect** until you compile a fresh Docker image.
 
 To rebuild the container:
 ```bash

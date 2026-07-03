@@ -87,7 +87,12 @@ async def query_text(
         
         # Format references beautifully
         if include_references and response.references:
-            output += "\n\n### References\n"
+            # Prevent duplicate top-level '### References' headers if the LLM response already generated one
+            if "### References" in output or "## References" in output:
+                output += "\n\n### Source File Mappings\n"
+            else:
+                output += "\n\n### References\n"
+            
             for ref in response.references:
                 output += f"- **[{ref.reference_id}]** `{ref.file_path}`\n"
                 if include_chunk_content and ref.content:
