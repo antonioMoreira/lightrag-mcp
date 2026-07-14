@@ -70,17 +70,17 @@ Queries streaming response chunks from LightRAG, accumulating the response inter
 ### Option A: Running with Docker (Recommended)
 
 1. **Build the Image**:
-   ```bash
-   docker build -t lightrag-mcp .
-   ```
+```bash
+docker build -t lightrag-mcp .
+```
 
 2. **Run the Container**:
-   Since the server uses standard input/output (`stdio`) to communicate, make sure to run it interactively (`-i`). If your LightRAG REST service runs on the host network, point the URL to `host.docker.internal`:
-   ```bash
-   docker run -i --rm \
-     -e LIGHTRAG_API_URL="http://host.docker.internal:9621" \
-     lightrag-mcp
-   ```
+  Since the server uses standard input/output (`stdio`) to communicate, make sure to run it interactively (`-i`). If your LightRAG REST service runs on the host network, point the URL to `host.docker.internal`:
+```bash
+docker run -i --rm \
+  -e LIGHTRAG_API_URL="http://host.docker.internal:9621" \
+  lightrag-mcp
+```
 
 ### Option B: Running Locally
 
