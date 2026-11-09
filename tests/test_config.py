@@ -1,6 +1,5 @@
-import os
-import pytest
 from lightrag_mcp.config import Settings
+
 
 def test_settings_default():
     """Verify that default settings are loaded correctly."""
@@ -16,3 +15,10 @@ def test_settings_env_override(monkeypatch):
     settings = Settings()
     assert settings.lightrag_api_url == "http://lightrag-sibling:9621"
     assert settings.request_timeout == 30.5
+
+def test_settings_admin_tools(monkeypatch):
+    """Verify that admin tools are off by default and enabled via LIGHTRAG_ENABLE_ADMIN_TOOLS."""
+    assert Settings().enable_admin_tools is False
+
+    monkeypatch.setenv("LIGHTRAG_ENABLE_ADMIN_TOOLS", "true")
+    assert Settings().enable_admin_tools is True

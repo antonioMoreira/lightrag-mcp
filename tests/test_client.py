@@ -1,12 +1,16 @@
-import pytest
 import httpx
+import pytest
+
 from lightrag_mcp.client import (
+    DeleteDocRequest,
+    DocumentsRequest,
     LightRAGClient,
+    LightRAGClientError,
+    QueryDataResponse,
     QueryRequest,
     QueryResponse,
-    QueryDataResponse,
-    LightRAGClientError,
 )
+
 
 @pytest.mark.asyncio
 async def test_query_text_success(mocker):
@@ -37,6 +41,7 @@ async def test_query_text_success(mocker):
     
     assert isinstance(res, QueryResponse)
     assert res.response == "This is a standard text response."
+    assert res.references is not None
     assert len(res.references) == 1
     assert res.references[0].reference_id == "ref_001"
     assert res.references[0].file_path == "doc1.txt"
@@ -321,3 +326,102 @@ async def test_query_stream_ndjson_error(mocker):
 
     assert "LightRAG stream error: LLM service temporarily unavailable" in str(exc_info.value)
 
+
+def _mock_http(mocker, status_code=200, json_body=None):
+    """Patch httpx.AsyncClient so .request returns a canned response."""
+    mock_response = mocker.MagicMock()
+    mock_response.status_code = status_code
+    mock_response.json.return_value = json_body or {}
+    mock_response.text = "error detail"
+
+    mock_client = mocker.AsyncMock()
+    mock_client.request.return_value = mock_response
+
+    mock_class = mocker.patch("httpx.AsyncClient")
+    mock_class.return_value.__aenter__.return_value = mock_client
+    return mock_client
+
+@pytest.mark.asyncio
+async def test_upload_document_sends_multipart(mocker, tmp_path):
+    """Verify that upload_document posts the file as multipart form data."""
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.7")
+    mock_client = _mock_http(mocker, json_body={"status": "success", "track_id": "upload_1"})
+
+    client = LightRAGClient("http://localhost:9621")
+    res = await client.upload_document(str(pdf))
+
+    assert res["track_id"] == "upload_1"
+    mock_client.request.assert_called_once_with(
+        "POST",
+        "http://localhost:9621/documents/upload",
+        files={"file": ("paper.pdf", b"%PDF-1.7", "application/pdf")},
+    )
+
+@pytest.mark.asyncio
+async def test_upload_document_missing_file(mocker, tmp_path):
+    """Verify that a missing file fails before any HTTP request is made."""
+    mock_client = _mock_http(mocker)
+
+    client = LightRAGClient("http://localhost:9621")
+    with pytest.raises(LightRAGClientError, match="File not found"):
+        await client.upload_document(str(tmp_path / "missing.pdf"))
+
+    mock_client.request.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_list_documents_payload(mocker):
+    """Verify that list_documents posts the pagination request."""
+    mock_client = _mock_http(mocker, json_body={"documents": []})
+
+    client = LightRAGClient("http://localhost:9621")
+    await client.list_documents(DocumentsRequest(status_filters=["failed"], page_size=10))
+
+    mock_client.request.assert_called_once_with(
+        "POST",
+        "http://localhost:9621/documents/paginated",
+        json={
+            "status_filters": ["failed"],
+            "page": 1,
+            "page_size": 10,
+            "sort_field": "updated_at",
+            "sort_direction": "desc",
+        },
+    )
+
+@pytest.mark.asyncio
+async def test_delete_documents_uses_delete_with_body(mocker):
+    """Verify that delete_documents sends a DELETE request with a JSON body."""
+    mock_client = _mock_http(mocker, json_body={"status": "deletion_started"})
+
+    client = LightRAGClient("http://localhost:9621")
+    await client.delete_documents(DeleteDocRequest(doc_ids=["doc-1"]))
+
+    mock_client.request.assert_called_once_with(
+        "DELETE",
+        "http://localhost:9621/documents/delete_document",
+        json={"doc_ids": ["doc-1"], "delete_file": False, "delete_llm_cache": False},
+    )
+
+@pytest.mark.asyncio
+async def test_list_source_conflicts_params(mocker):
+    """Verify that the cursor is only sent when provided."""
+    mock_client = _mock_http(mocker, json_body={"conflicts": []})
+
+    client = LightRAGClient("http://localhost:9621")
+    await client.list_source_conflicts(limit=10)
+
+    mock_client.request.assert_called_once_with(
+        "GET",
+        "http://localhost:9621/documents/source_conflicts",
+        params={"limit": 10},
+    )
+
+@pytest.mark.asyncio
+async def test_document_request_http_error(mocker):
+    """Verify that non-200 responses on document endpoints raise LightRAGClientError."""
+    _mock_http(mocker, status_code=409)
+
+    client = LightRAGClient("http://localhost:9621")
+    with pytest.raises(LightRAGClientError, match="error status 409: error detail"):
+        await client.get_track_status("upload_1")

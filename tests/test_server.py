@@ -1,12 +1,26 @@
+import json
+
 import pytest
-from pydantic import ValidationError
-from lightrag_mcp.server import query_text, query_data, query_stream, client
+
 from lightrag_mcp.client import (
-    QueryResponse,
-    QueryDataResponse,
-    ReferenceItem,
     LightRAGClientError,
+    QueryDataResponse,
+    QueryResponse,
+    ReferenceItem,
 )
+from lightrag_mcp.server import (
+    client,
+    delete_documents,
+    get_track_status,
+    insert_text,
+    list_documents,
+    mcp,
+    query_data,
+    query_stream,
+    query_text,
+    upload_document,
+)
+
 
 @pytest.mark.asyncio
 async def test_server_query_text_success(mocker):
@@ -99,3 +113,63 @@ async def test_server_query_stream_success(mocker):
     res = await query_stream(query="Run stream")
     assert res == "Streaming RAG Response"
     mock_query_stream.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_server_upload_document_returns_json(mocker):
+    """Verify that upload_document renders the client result as JSON."""
+    mocker.patch.object(
+        client,
+        "upload_document",
+        return_value={"status": "success", "track_id": "upload_1"},
+    )
+
+    res = await upload_document(file_path="/data/paper.pdf")
+    assert json.loads(res) == {"status": "success", "track_id": "upload_1"}
+
+@pytest.mark.asyncio
+async def test_server_document_client_error(mocker):
+    """Verify that document tools handle client-level exceptions gracefully."""
+    mocker.patch.object(
+        client,
+        "get_track_status",
+        side_effect=LightRAGClientError("API is down")
+    )
+
+    res = await get_track_status(track_id="upload_1")
+    assert res == "LightRAG Document Error: API is down"
+
+@pytest.mark.asyncio
+async def test_server_insert_text_chunking(mocker):
+    """Verify that chunking config is only sent when requested."""
+    mock_insert = mocker.patch.object(client, "insert_text", return_value={"status": "success"})
+
+    await insert_text(text="plain text")
+    assert mock_insert.call_args[0][0].chunking is None
+
+    await insert_text(text="plain text", chunking_strategy="recursive_character")
+    assert mock_insert.call_args[0][0].chunking.strategy == "recursive_character"
+
+@pytest.mark.asyncio
+async def test_server_delete_documents_validation_error(mocker):
+    """Verify that delete_documents rejects an empty ID list without calling LightRAG."""
+    mock_delete = mocker.patch.object(client, "delete_documents")
+
+    res = await delete_documents(doc_ids=[])
+    assert "Input Validation Error" in res
+    mock_delete.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_server_list_documents_validation_error():
+    """Verify that list_documents enforces the page size range."""
+    res = await list_documents(page_size=500)
+    assert "Input Validation Error" in res
+
+@pytest.mark.asyncio
+async def test_server_admin_tools_disabled_by_default():
+    """Verify that bulk-destructive tools are hidden unless explicitly enabled."""
+    names = {tool.name for tool in await mcp.list_tools()}
+
+    assert {"upload_document", "delete_documents", "query_text"} <= names
+    assert names.isdisjoint(
+        {"clear_documents", "clear_cache", "force_reset_recovery", "cancel_pipeline", "repair_source_conflict"}
+    )
