@@ -249,3 +249,75 @@ async def test_query_stream_http_error(mocker):
 
     assert "server returned error status 400" in str(exc_info.value)
     assert "Bad Request Parameter" in str(exc_info.value)
+
+@pytest.mark.asyncio
+async def test_query_stream_ndjson_success(mocker):
+    """Verify that query_stream parses LightRAG NDJSON lines and filters out metadata lines."""
+    mock_stream_response = mocker.MagicMock()
+    mock_stream_response.status_code = 200
+
+    async def mock_aiter_lines():
+        yield '{"progress": "extracting_keywords"}'
+        yield '{"references": [{"reference_id": "1", "file_path": "/documents/rust.md"}]}'
+        yield '{"response": "Rust is a "}'
+        yield '{"response": "systems programming language."}'
+        yield '{"response_time": 0.842}'
+
+    mock_stream_response.aiter_lines = mock_aiter_lines
+
+    mock_client = mocker.AsyncMock()
+    mock_client.stream = mocker.MagicMock()
+
+    mock_context_manager = mocker.AsyncMock()
+    mock_context_manager.__aenter__.return_value = mock_stream_response
+    mock_client.stream.return_value = mock_context_manager
+
+    mock_class = mocker.patch("httpx.AsyncClient")
+    mock_class.return_value.__aenter__.return_value = mock_client
+
+    client = LightRAGClient("http://localhost:9621")
+    request = QueryRequest(
+        query="Stream NDJSON query",
+        mode="mix",
+        include_progress=True,
+        disable_user_prompt_prefix=True,
+    )
+
+    chunks = []
+    async for chunk in client.query_stream(request):
+        chunks.append(chunk)
+
+    assert "".join(chunks) == "Rust is a systems programming language."
+
+@pytest.mark.asyncio
+async def test_query_stream_ndjson_error(mocker):
+    """Verify that NDJSON error objects in query_stream raise LightRAGClientError."""
+    mock_stream_response = mocker.MagicMock()
+    mock_stream_response.status_code = 200
+
+    async def mock_aiter_lines():
+        yield '{"references": [{"reference_id": "1", "file_path": "/documents/rust.md"}]}'
+        yield '{"response": "Partial output"}'
+        yield '{"error": "LLM service temporarily unavailable"}'
+
+    mock_stream_response.aiter_lines = mock_aiter_lines
+
+    mock_client = mocker.AsyncMock()
+    mock_client.stream = mocker.MagicMock()
+
+    mock_context_manager = mocker.AsyncMock()
+    mock_context_manager.__aenter__.return_value = mock_stream_response
+    mock_client.stream.return_value = mock_context_manager
+
+    mock_class = mocker.patch("httpx.AsyncClient")
+    mock_class.return_value.__aenter__.return_value = mock_client
+
+    client = LightRAGClient("http://localhost:9621")
+    request = QueryRequest(query="Stream NDJSON error")
+
+    with pytest.raises(LightRAGClientError) as exc_info:
+        async for _ in client.query_stream(request):
+            pass
+
+    assert "LightRAG stream error: LLM service temporarily unavailable" in str(exc_info.value)
+
